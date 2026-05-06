@@ -14,23 +14,30 @@ ansible  ⎇ main  Sonnet 4.6  5h:29% ↺12:00  7d:17% ↺21:20
 
 ## Files
 
-| File | Destination | Purpose |
-|------|-------------|---------|
-| `statusline.py` | `~/.claude/statusline.py` | Main statusbar script called by Claude Code |
-| `ttl-daemon.py` | `~/.claude/ttl-daemon.py` | Background daemon that writes TTL every second |
-| `claude-ttl.service` | `~/.config/systemd/user/` | systemd unit to run the daemon on login |
+| File | Purpose |
+|------|---------|
+| `statusline.py` | Main statusbar script called by Claude Code |
+| `ttl-daemon.py` | Background daemon that writes TTL every second |
+| `claude-ttl.service` | systemd unit (Linux) |
+| `com.claude.ttl.plist` | launchd agent (macOS) |
 
 ## Requirements
 
 - Python 3.7+
 - `git` in PATH
-- systemd (Linux)
 
 ## Installation
 
+**Linux:**
 ```bash
 chmod +x install.sh
 ./install.sh
+```
+
+**macOS:**
+```bash
+chmod +x install-macos.sh
+./install-macos.sh
 ```
 
 Then add to `~/.claude/settings.json`:
@@ -62,9 +69,18 @@ This separation means the countdown ticks in real time even when Claude Code is 
 
 ## Managing the daemon
 
+**Linux:**
 ```bash
 systemctl --user status claude-ttl
 systemctl --user restart claude-ttl
 systemctl --user stop claude-ttl
 journalctl --user -u claude-ttl -f   # live logs
+```
+
+**macOS:**
+```bash
+launchctl list | grep claude
+launchctl unload ~/Library/LaunchAgents/com.claude.ttl.plist
+launchctl load   ~/Library/LaunchAgents/com.claude.ttl.plist
+tail -f /tmp/claude-ttl.log          # live logs
 ```
