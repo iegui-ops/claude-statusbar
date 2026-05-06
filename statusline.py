@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import json, sys, os, time, datetime, subprocess
+import json, sys, os, time, datetime, subprocess, platform
+
+# TTL countdown requires the background daemon (systemd on Linux, launchd on macOS)
+TTL_SUPPORTED = platform.system() in ("Linux", "Darwin")
 
 # ANSI
 RESET  = "\033[0m"
@@ -159,13 +162,14 @@ def build(data, sid="", branch=""):
     if c_create is not None:
         cache_str += f"  {DIM}{_fmt(c_create)} cache↑{RESET}"
 
-    try:
-        with open(TTL_FILE) as f:
-            ttl_str = f.read().strip()
-        if ttl_str:
-            cache_str += f"  {DIM}TTL {ttl_str}{RESET}"
-    except Exception:
-        pass
+    if TTL_SUPPORTED:
+        try:
+            with open(TTL_FILE) as f:
+                ttl_str = f.read().strip()
+            if ttl_str:
+                cache_str += f"  {DIM}TTL {ttl_str}{RESET}"
+        except Exception:
+            pass
 
     line2 = f"{bar_str} {pct_str}{tok_str}{cache_str}"
 
@@ -185,7 +189,7 @@ def main():
     # Save cache timestamp before any rendering — must not be inside build()
     # or it resets on every rebuild, preventing the countdown from decreasing
     c_create = ((data.get("context_window") or {}).get("current_usage") or {}).get("cache_creation_input_tokens") or 0
-    if c_create:
+    if c_create and TTL_SUPPORTED:
         _save_api_cache_ts(sid)
 
     # Cache key includes branch so switching branches busts the cache immediately
