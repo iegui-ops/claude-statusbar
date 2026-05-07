@@ -116,10 +116,13 @@ def build(data, sid="", branch=""):
     rl = data.get("rate_limits")
     if rl:
         five  = rl.get("five_hour") or {}
+        one   = rl.get("one_day")   or {}
         seven = rl.get("seven_day") or {}
 
         pct5 = five.get("used_percentage")
         rst5 = five.get("resets_at")
+        pct1 = one.get("used_percentage")
+        rst1 = one.get("resets_at")
         pct7 = seven.get("used_percentage")
         rst7 = seven.get("resets_at")
 
@@ -128,6 +131,12 @@ def build(data, sid="", branch=""):
             c5   = _color(pct5)
             rst  = f"↺{datetime.datetime.fromtimestamp(rst5).strftime('%H:%M')}" if rst5 else ""
             parts.append(f"5h:{c5}{pct5:.0f}%{RESET} {DIM}{rst}{RESET}")
+
+        if pct1 is not None:
+            pct1 = max(0.0, min(100.0, float(pct1)))
+            c1   = _color(pct1)
+            rst  = f"↺{datetime.datetime.fromtimestamp(rst1).strftime('%H:%M')}" if rst1 else ""
+            parts.append(f"1d:{c1}{pct1:.0f}%{RESET} {DIM}{rst}{RESET}")
 
         if pct7 is not None:
             pct7 = max(0.0, min(100.0, float(pct7)))
