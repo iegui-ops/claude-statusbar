@@ -141,7 +141,7 @@ def build(data, sid="", branch=""):
         if pct7 is not None:
             pct7 = max(0.0, min(100.0, float(pct7)))
             c7   = _color(pct7)
-            rst  = f"↺{datetime.datetime.fromtimestamp(rst7).strftime('%H:%M')}" if rst7 else ""
+            rst  = f"↺{datetime.datetime.fromtimestamp(rst7).strftime('%a %d/%m %H:%M')}" if rst7 else ""
             parts.append(f"7d:{c7}{pct7:.0f}%{RESET} {DIM}{rst}{RESET}")
 
     line1 = "  ".join(parts)
