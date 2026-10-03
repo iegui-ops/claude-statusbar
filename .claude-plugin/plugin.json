@@ -1,8 +1,10 @@
 {
-  "name": "statusbar",
+  "name": "session-vitals",
+  "displayName": "Session Vitals",
   "version": "2.0.0",
-  "description": "Two-line statusbar under the prompt: dir, branch, model, rate limits, context bar, prompt cache and live cache TTL countdown",
+  "description": "Your Claude Code session at a glance, under the prompt: context bar, rate limits, prompt cache stats with a live TTL countdown, model and git branch",
   "author": { "name": "Ivan" },
+  "homepage": "https://github.com/iegui-ops/claude-statusbar",
   "repository": "https://github.com/iegui-ops/claude-statusbar",
   "types": "./types/index.d.ts",
   "userConfig": {

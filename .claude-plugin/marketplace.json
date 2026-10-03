@@ -1,0 +1,8 @@
+{
+  "name": "iegui-ops",
+  "owner": { "name": "Ivan" },
+  "description": "Claude Code plugins by Ivan: Session Vitals, your session at a glance under the prompt",
+  "plugins": [
+    { "name": "session-vitals", "source": "./" }
+  ]
+}

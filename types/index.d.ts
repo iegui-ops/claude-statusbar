@@ -7,7 +7,7 @@ export type Measure = {
 
 declare module 'claude-code' {
   interface PluginState {
-    statusbar: {
+    'session-vitals': {
       dir: string
       branch: string
       cache: Cache | null

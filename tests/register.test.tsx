@@ -11,7 +11,7 @@ test('the bar draws above the engine hint on every surface', async ($, on) => {
     return <Text dimColor>{e.props.hint}</Text>
   })
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'statusbar', surface, component: 'PromptHint', props: PROPS })
+    const ui = await $.ui.mount({ plugin: 'session-vitals', surface, component: 'PromptHint', props: PROPS })
     expect(await ui.drawn()).toMatchObject({ type: 'Box' })
     expect(await ui.find({ text: /░{20} 0%/ })).toBeDefined()
     expect(await ui.find({ text: '? for shortcuts' })).toBeDefined()

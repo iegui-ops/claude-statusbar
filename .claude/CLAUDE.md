@@ -4,15 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Claude Code mod (function-hook plugin): the repo root is the plugin folder. It draws a two-line statusbar under the prompt with a live prompt cache TTL countdown. The previous Python statusline + TTL daemon lives on the `v1` tag; `main` is the mod only.
+**Session Vitals** (`session-vitals`), a Claude Code mod (function-hook plugin): the repo root is the plugin folder and also a one-plugin marketplace (`iegui-ops`, `.claude-plugin/marketplace.json`). It draws two lines under the prompt with a live prompt cache TTL countdown. The previous Python statusline + TTL daemon lives on the `v1` tag; `main` is the mod only.
+
+The plugin `name` is permanent (users install `session-vitals@iegui-ops`); change `displayName` instead. It is also the `plugin` key of every atom and the `PluginState` key in `types/index.d.ts`.
+
+This file lives in `.claude/` because a `CLAUDE.md` at the plugin root makes `validate --strict` fail.
 
 ## Commands
 
 ```bash
-claude plugin validate .   # manifest + module as the engine reads them; run after every hooks change
-claude plugin test .       # tests/*.test.tsx against the engine
-tsc -p .                   # needs .claude-plugin/types/, which the engine writes when it loads the mod
+claude plugin validate --strict .                            # marketplace.json
+claude plugin validate --strict .claude-plugin/plugin.json   # manifest + module as the engine reads them; run after every hooks change
+claude plugin test .                                         # tests/*.test.tsx against the engine
+tsc -p .                                                     # needs .claude-plugin/types/, which the engine writes when it loads the mod
 ```
+
+Bump `version` in `plugin.json` on every release, or `claude plugin update` keeps users on the old copy.
 
 Loaded in every session through `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (`env`), which watches the folder: saving a file reloads the mod at the end of the turn. A reload reruns `register` and `session.start`; `$.state` atoms survive, module variables (`expiresAt`, `tick`) start over.
 

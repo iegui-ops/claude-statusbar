@@ -1,6 +1,6 @@
-# Claude Code Statusbar
+# Session Vitals
 
-A Claude Code **mod** (a plugin of function hooks) that draws a two-line statusbar under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown.
+Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown.
 
 ```
 statusbar  ⎇ main  opus-5-5  5h:47% ↺14:30  7d:39% ↺Wed 07/10 22:00
@@ -17,34 +17,31 @@ Claude Code's own hint line (mode pills, shortcuts) stays, drawn right under it.
 
 ## Requirements
 
-- A Claude Code version with mods (function-hook plugins). The plugin API is early access and may change between releases.
+- Claude Code **v2.1.287 or later** (the first version with mods). Tested with **v2.1.288**. The mods API is early access and may change between releases.
 - `git` in PATH (for the branch).
 
 No Python, no daemon, no service: everything runs inside the Claude Code session, on any OS Claude Code runs on.
 
 ## Install
 
-1. Clone the repo anywhere:
+From your shell:
 
-   ```bash
-   git clone https://github.com/iegui-ops/claude-statusbar.git ~/src/claude-statusbar
-   ```
+```bash
+claude plugin marketplace add iegui-ops/claude-statusbar
+claude plugin install session-vitals@iegui-ops
+```
 
-2. Load it in every session by adding the folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`:
+Or both at once from inside a session (Claude Code v2.1.275+):
 
-   ```json
-   {
-     "env": {
-       "CLAUDE_CODE_PLUGIN_DIRS": "~/src/claude-statusbar"
-     }
-   }
-   ```
+```
+/plugin install session-vitals --marketplace iegui-ops/claude-statusbar
+```
 
-   Several folders are separated with `:` (`;` on Windows). To try it once without touching settings: `claude --plugin-dir ~/src/claude-statusbar`.
+Start a new session. If you still have a `statusLine` entry in `~/.claude/settings.json`, remove it, or you will see two statusbars.
 
-3. Start a new Claude Code session. If you still have a `statusLine` entry in `settings.json`, remove it, or you will see two statusbars.
+**Updates:** `claude plugin update session-vitals@iegui-ops`, or turn on auto-update for the `iegui-ops` marketplace in `/plugin`.
 
-Updating is `git pull`; an interactive session watches the folder and reloads the mod when its files change.
+**Try it without installing:** clone the repo and run `claude --plugin-dir ./claude-statusbar` for one session.
 
 ## Configuration
 
@@ -94,8 +91,13 @@ To keep using v1 (older Claude Code, or no mods): `git checkout v1` and follow t
 
 ## Development
 
+Work on a clone loaded with `claude --plugin-dir .` (or listed in `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of `~/.claude/settings.json`), not on an installed copy: the folder is watched and the mod reloads at the end of each turn that changes it. Uninstall the marketplace copy first, or both will draw.
+
 ```bash
-claude plugin validate .   # what the module hooks and calls, and anything the engine would refuse
-claude plugin test .       # runs tests/*.test.tsx against the engine
-tsc -p .                   # type-check (the engine writes .claude-plugin/types/ once it has loaded the mod)
+claude plugin validate --strict .                            # the marketplace manifest
+claude plugin validate --strict .claude-plugin/plugin.json   # the plugin: what it hooks and calls, anything the engine would refuse
+claude plugin test .                                         # tests/*.test.tsx against the engine
+tsc -p .                                                     # type-check (the engine writes .claude-plugin/types/ once it has loaded the mod)
 ```
+
+Bump `version` in `.claude-plugin/plugin.json` on every release, or `claude plugin update` keeps users on the old copy.

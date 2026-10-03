@@ -3,11 +3,11 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Cache, Limit, Measure } from '../types'
 
-const dir = atom({ plugin: 'statusbar', key: 'dir' } as const, '')
-const branch = atom({ plugin: 'statusbar', key: 'branch' } as const, '')
-const cache = atom({ plugin: 'statusbar', key: 'cache' } as const, null)
-const measure = atom({ plugin: 'statusbar', key: 'measure' } as const, null)
-const ttlLeft = atom({ plugin: 'statusbar', key: 'ttlLeft' } as const, null)
+const dir = atom({ plugin: 'session-vitals', key: 'dir' } as const, '')
+const branch = atom({ plugin: 'session-vitals', key: 'branch' } as const, '')
+const cache = atom({ plugin: 'session-vitals', key: 'cache' } as const, null)
+const measure = atom({ plugin: 'session-vitals', key: 'measure' } as const, null)
+const ttlLeft = atom({ plugin: 'session-vitals', key: 'ttlLeft' } as const, null)
 
 const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', one_day: '1d', seven_day: '7d' }
 
