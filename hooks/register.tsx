@@ -1,13 +1,17 @@
-import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, Timer } from 'claude-code'
+import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, Timer } from 'claude-code'
 
-import type { Cache, Limit, Measure } from '../types'
+type Limit = Pick<SessionRateLimit, 'kind' | 'percentUsed' | 'resetsAt'>
 
-const dir = atom({ plugin: 'session-vitals', key: 'dir' } as const, '')
-const branch = atom({ plugin: 'session-vitals', key: 'branch' } as const, '')
-const cache = atom({ plugin: 'session-vitals', key: 'cache' } as const, null)
-const measure = atom({ plugin: 'session-vitals', key: 'measure' } as const, null)
-const ttlLeft = atom({ plugin: 'session-vitals', key: 'ttlLeft' } as const, null)
+// What the bar shows. Module variables, not $.state: the directory refuses the manifest
+// `types` field a $.state contract needs. Each change asks the engine to redraw.
+const s = {
+  dir: '',
+  branch: '',
+  cache: null as { read: number; created: number; model: string } | null,
+  context: null as SessionContextUsage | null,
+  limits: [] as readonly Limit[],
+  ttlLeft: null as number | null,
+}
 
 const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', one_day: '1d', seven_day: '7d' }
 
@@ -33,38 +37,45 @@ export const resetLabel = (rl: Limit) => {
   return `↺${day} ${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${hm}`
 }
 
-async function refreshBranch($: EngineInterface) {
-  const r = await $.process.run(['git', 'symbolic-ref', '--short', 'HEAD'], { timeoutMs: 2000 }).catch(() => null)
-  const name = r?.exitCode === 0 ? r.stdout.trim() : ''
-  await update($, branch, () => name)
+// A missing, zero, negative or non-numeric setting falls back to the 1-hour cache.
+export const ttlMinutes = (v: unknown) => {
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : 60
 }
 
-// Writes the seconds left (null once expired); false when the countdown is over.
+async function refreshBranch($: EngineInterface) {
+  const r = await $.process.run(['git', 'symbolic-ref', '--short', 'HEAD'], { timeoutMs: 2000 }).catch(() => null)
+  s.branch = r?.exitCode === 0 ? r.stdout.trim() : ''
+  $.ui.invalidate('ui.render')
+}
+
+// Sets the seconds left (null once expired); false when the countdown is over.
 async function countdown($: EngineInterface, expiresAt: number) {
   const left = Math.ceil((expiresAt - (await $.clock.now())) / 1000)
-  await update($, ttlLeft, () => (left > 0 ? left : null))
+  s.ttlLeft = left > 0 ? left : null
+  $.ui.invalidate('ui.render')
   return left > 0
 }
 
 export const register: Register = (on, options) => {
-  const ttlMs = Number(options.ttlMinutes ?? 60) * 60_000
+  const ttlMs = ttlMinutes(options.ttlMinutes) * 60_000
   // The prompt cache entry lives ttlMs from its last write or read; one timer ticks while it lives.
   let expiresAt = 0
   let tick: Timer | null = null
 
   on('session.start', async ($, e, next) => {
     const { context, rateLimits } = await $.session.usage()
-    const m: Measure = { context, rateLimits }
-    await update($, measure, () => m)
-    const name = e.cwd.replace(/\/+$/, '').split('/').pop() || e.cwd
-    await update($, dir, () => name)
+    s.context = context
+    s.limits = rateLimits
+    s.dir = e.cwd.replace(/\/+$/, '').split('/').pop() || e.cwd
     await refreshBranch($)
     return next(e)
   })
 
-  on('session.measure', async ($, e, next) => {
-    const m: Measure = { context: e.context, rateLimits: e.rateLimits }
-    await update($, measure, () => m)
+  on('session.measure', ($, e, next) => {
+    s.context = e.context
+    s.limits = e.rateLimits
+    $.ui.invalidate('ui.render')
     return next(e)
   })
 
@@ -72,9 +83,9 @@ export const register: Register = (on, options) => {
   on('turn.step', async function* ($, e, next) {
     const r = yield* next(e)
     if (e.agentId || !r.usage) return r
-    const c: Cache = { read: r.usage.cache_read_input_tokens, created: r.usage.cache_creation_input_tokens, model: r.usage.model }
-    await update($, cache, () => c)
-    if (c.read + c.created > 0) {
+    s.cache = { read: r.usage.cache_read_input_tokens, created: r.usage.cache_creation_input_tokens, model: r.usage.model }
+    $.ui.invalidate('ui.render')
+    if (s.cache.read + s.cache.created > 0) {
       expiresAt = (await $.clock.now()) + ttlMs
       tick ??= $.clock.every(1000, () => {
         void countdown($, expiresAt).then(alive => {
@@ -99,16 +110,16 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const { Box, Text } = $.ui.resolve(e)
     const hint = await next(e)
-    const [d, br, c, m, ttl] = await Promise.all([read($, dir), read($, branch), read($, cache), read($, measure), read($, ttlLeft)])
-    const pct = m?.context.percent ?? 0
+    const { dir, branch, cache: c, context, limits, ttlLeft } = s
+    const pct = context?.percent ?? 0
 
     return (
       <Box flexDirection="column">
         <Text>
-          <Text bold color="cyan">{d}</Text>
-          {br ? <Text dimColor>{`  ⎇ ${br}`}</Text> : null}
+          <Text bold color="cyan">{dir}</Text>
+          {branch ? <Text dimColor>{`  ⎇ ${branch}`}</Text> : null}
           {c ? <Text dimColor>{`  ${c.model.replace(/^claude-/, '')}`}</Text> : null}
-          {(m?.rateLimits ?? []).map(rl => (
+          {limits.map(rl => (
             <Text>
               {`  ${LIMIT_LABEL[rl.kind] ?? rl.kind}:`}
               <Text color={color(rl.percentUsed)}>{`${Math.round(rl.percentUsed)}%`}</Text>
@@ -118,9 +129,9 @@ export const register: Register = (on, options) => {
         </Text>
         <Text>
           <Text color={color(pct)}>{`${bar(pct)} ${pct}%`}</Text>
-          {m?.context.tokens ? <Text color="white">{` ${fmt(m.context.tokens)}/${fmt(m.context.window)}`}</Text> : null}
+          {context?.tokens ? <Text color="white">{` ${fmt(context.tokens)}/${fmt(context.window)}`}</Text> : null}
           {c ? <Text dimColor>{`  ${fmt(c.read)} cache↩  ${fmt(c.created)} cache↑`}</Text> : null}
-          {ttl !== null ? <Text dimColor>{`  TTL ${mss(ttl)}`}</Text> : null}
+          {ttlLeft !== null ? <Text dimColor>{`  TTL ${mss(ttlLeft)}`}</Text> : null}
         </Text>
         {hint}
       </Box>

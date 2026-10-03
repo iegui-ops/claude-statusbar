@@ -45,9 +45,9 @@ Start a new session. If you still have a `statusLine` entry in `~/.claude/settin
 
 ## Configuration
 
-| Option | Values | Default | What it does |
-|--------|--------|---------|--------------|
-| `ttlMinutes` | `5`, `60` | `60` | Prompt cache lifetime the countdown uses. `5` is the API's default cache, `60` the 1-hour cache Claude Code uses on subscriptions. |
+| Option | Type | Default | What it does |
+|--------|------|---------|--------------|
+| `ttlMinutes` | number | `60` | Prompt cache lifetime the countdown uses, in minutes. Use `5` for the API's default cache, `60` for the 1-hour cache Claude Code uses on subscriptions. A missing, zero or invalid value falls back to `60`. |
 
 Change it from the plugin's row in Claude Code's config menu; the mod reloads with the new value.
 
@@ -62,6 +62,12 @@ Everything is in `hooks/register.tsx`:
 - **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the two lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
 
 **Token cost: zero.** The mod never calls the model, never changes the system prompt or the messages; it only reads figures Claude Code already has.
+
+## Data and programs
+
+**What the mod sends, and where: nothing.** It makes no network requests (no `$.http`), never calls a model (no `$.model`), writes no files and keeps nothing across sessions. Everything it shows is read from the running Claude Code session and kept in memory until the session ends.
+
+**Programs it runs: `git`, only.** It runs `git symbolic-ref --short HEAD` in the session's working directory to show the current branch: once when the session starts and once after each turn. The command only reads the repository; outside a git repository it fails silently and the branch is left out. It times out after 2 seconds.
 
 ## Migrating from v1
 
@@ -101,3 +107,7 @@ tsc -p .                                                     # type-check (the e
 ```
 
 Bump `version` in `.claude-plugin/plugin.json` on every release, or `claude plugin update` keeps users on the old copy.
+
+## License
+
+MIT, see [LICENSE](LICENSE).

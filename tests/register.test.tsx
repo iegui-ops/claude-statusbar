@@ -1,6 +1,15 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, color, fmt, mss, resetLabel } from '../hooks/register'
+import { bar, color, fmt, mss, resetLabel, ttlMinutes } from '../hooks/register'
+
+test('ttlMinutes falls back to the 1-hour cache on bad settings', () => {
+  expect(ttlMinutes(5)).toBe(5)
+  expect(ttlMinutes('60')).toBe(60)
+  expect(ttlMinutes(undefined)).toBe(60)
+  expect(ttlMinutes(0)).toBe(60)
+  expect(ttlMinutes(-5)).toBe(60)
+  expect(ttlMinutes('abc')).toBe(60)
+})
 
 const PROPS = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
 
