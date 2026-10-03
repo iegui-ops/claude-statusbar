@@ -82,7 +82,7 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |
 | `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
 
-The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`, `ui.render` on `PromptHint`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses.
+The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. The only thing it changes is the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its two lines above Claude Code's own hint.
 
 ## Migrating from v1
 
