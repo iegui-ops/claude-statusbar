@@ -69,6 +69,21 @@ Everything is in `hooks/register.tsx`:
 
 **Programs it runs: `git`, only.** It runs `git symbolic-ref --short HEAD` in the session's working directory to show the current branch: once when the session starts and once after each turn. The command only reads the repository; outside a git repository it fails silently and the branch is left out. It times out after 2 seconds.
 
+### Every mods API call it makes
+
+This is the full list (`claude plugin validate .claude-plugin/plugin.json` prints the same set under `calls:`). None of them sends data off the machine.
+
+| Call | What it does here | Data in / out |
+|------|-------------------|---------------|
+| `$.session.usage()` | Reads the context window fill and rate-limit windows once, at session start. | Reads figures Claude Code already has; sends nothing. |
+| `$.clock.now()` | Reads the current time, to compute when the prompt cache expires. | Local clock only. |
+| `$.clock.every(1000, fn)` | Ticks once a second while the prompt cache is alive, to update the TTL countdown; cancelled when it expires. | Local timer only. |
+| `$.process.run(['git', 'symbolic-ref', '--short', 'HEAD'])` | Gets the current branch name (see above). | Runs `git` locally, read-only; its output (the branch name) is only displayed. |
+| `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |
+| `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
+
+The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`, `ui.render` on `PromptHint`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses.
+
 ## Migrating from v1
 
 v1 was a Python `statusLine` command plus a background daemon. To remove it:
