@@ -1,0 +1,17 @@
+{
+  "name": "statusbar",
+  "version": "2.0.0",
+  "description": "Two-line statusbar under the prompt: dir, branch, model, rate limits, context bar, prompt cache and live cache TTL countdown",
+  "author": { "name": "Ivan" },
+  "repository": "https://github.com/iegui-ops/claude-statusbar",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "ttlMinutes": {
+      "type": "string",
+      "title": "Prompt cache TTL (minutes)",
+      "description": "5 for the API default cache, 60 for the 1-hour cache",
+      "options": ["5", "60"],
+      "default": "60"
+    }
+  }
+}
