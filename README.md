@@ -18,9 +18,7 @@ Claude Code's own hint line (mode pills, shortcuts) stays, drawn right under it.
 ## Requirements
 
 - Claude Code **v2.1.287 or later** (the first version with mods). Tested with **v2.1.288**. The mods API is early access and may change between releases.
-- `git` in PATH (for the branch).
-
-No Python, no daemon, no service: everything runs inside the Claude Code session, on any OS Claude Code runs on.
+No Python, no `git` binary, no daemon, no service: everything runs inside the Claude Code session, on any OS Claude Code runs on.
 
 ## Install
 
@@ -58,7 +56,7 @@ Everything is in `hooks/register.tsx`:
 - **Context, rate limits:** read from the session (`$.session.usage()` at start, then the `session.measure` event whenever a figure moves).
 - **Cache stats and TTL:** every main-thread model response (`turn.step`) reports its cache read and cache write tokens. Any response that read or wrote the cache restarts the countdown, since using a cache entry refreshes its lifetime. Subagents keep their own cache, so they are ignored.
 - **Countdown:** a 1-second timer (`$.clock.every`) inside the mod, cancelled once the cache expires.
-- **Branch:** `git symbolic-ref --short HEAD`, re-read at session start and after each turn.
+- **Branch:** read from `.git/HEAD`, found by walking up from the session's folder as git does (worktrees and detached HEADs included), at session start and after each turn. No `git` process is started.
 - **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the two lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
 
 **Token cost: zero.** The mod never calls the model, never changes the system prompt or the messages; it only reads figures Claude Code already has.
@@ -67,7 +65,9 @@ Everything is in `hooks/register.tsx`:
 
 **What the mod sends, and where: nothing.** It makes no network requests (no `$.http`), never calls a model (no `$.model`), writes no files and keeps nothing across sessions. Everything it shows is read from the running Claude Code session and kept in memory until the session ends.
 
-**Programs it runs: `git`, only.** It runs `git symbolic-ref --short HEAD` in the session's working directory to show the current branch: once when the session starts and once after each turn. The command only reads the repository; outside a git repository it fails silently and the branch is left out. It times out after 2 seconds.
+**Programs it runs: none.** It starts no process (no `$.process`).
+
+**Files it reads: only git's HEAD.** To show the current branch it looks for a `.git` entry in the session's folder and each folder above it, and reads the first one's `HEAD` file (`ref: refs/heads/main`). In a git worktree `.git` is a small file naming the real git folder, so it reads that file and then the `HEAD` it points to. This happens once when the session starts and once after each turn. Outside a git repository nothing is read and the branch is left out. It never writes a file.
 
 ### Every mods API call it makes
 
@@ -78,7 +78,9 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.session.usage()` | Reads the context window fill and rate-limit windows once, at session start. | Reads figures Claude Code already has; sends nothing. |
 | `$.clock.now()` | Reads the current time, to compute when the prompt cache expires. | Local clock only. |
 | `$.clock.every(1000, fn)` | Ticks once a second while the prompt cache is alive, to update the TTL countdown; cancelled when it expires. | Local timer only. |
-| `$.process.run(['git', 'symbolic-ref', '--short', 'HEAD'])` | Gets the current branch name (see above). | Runs `git` locally, read-only; its output (the branch name) is only displayed. |
+| `$.session.cwd()` | Gets the session's folder, where the search for `.git` starts. | Reads a path Claude Code already has; sends nothing. |
+| `$.fs.exists(path)` | Checks whether a folder has a `.git` entry, walking up from the session's folder. | Local file check only. |
+| `$.fs.read(path)` | Reads git's `HEAD` file (and, in a worktree, the `.git` file pointing to it) to get the branch name. | Local file read; the branch name is only displayed. |
 | `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |
 | `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
 

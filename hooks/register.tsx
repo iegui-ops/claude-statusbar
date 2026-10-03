@@ -43,9 +43,43 @@ export const ttlMinutes = (v: unknown) => {
   return Number.isFinite(n) && n > 0 ? n : 60
 }
 
+// The branch a HEAD file names, or the short hash of a detached HEAD; '' for anything else.
+export const branchFromHead = (head: string) => {
+  const t = head.trim()
+  const ref = /^ref: refs\/heads\/(.+)$/.exec(t)
+  if (ref) return ref[1] ?? ''
+  return /^[0-9a-f]{40,64}$/.test(t) ? t.slice(0, 7) : ''
+}
+
+// A worktree's `.git` is a file, `gitdir: <path>`, relative to the folder holding it.
+export const gitDirFromFile = (text: string, dir: string) => {
+  const m = /^gitdir: (.+)$/m.exec(text)
+  if (!m?.[1]) return ''
+  const p = m[1].trim()
+  return /^([\\/]|[A-Za-z]:)/.test(p) ? p : `${dir}/${p}`
+}
+
+// '' once there is no folder above (`/home` on Unix, `C:` on Windows), which ends the walk.
+export const parentDir = (dir: string) => {
+  const up = dir.replace(/[\\/][^\\/]*[\\/]?$/, '')
+  return up === dir ? '' : up
+}
+
+// Reads the branch from .git/HEAD, walking up from the session's folder as git does.
+// No git process: reading two small files is all it takes.
 async function refreshBranch($: EngineInterface) {
-  const r = await $.process.run(['git', 'symbolic-ref', '--short', 'HEAD'], { timeoutMs: 2000 }).catch(() => null)
-  s.branch = r?.exitCode === 0 ? r.stdout.trim() : ''
+  let branch = ''
+  for (let dir = (await $.session.cwd()).replace(/[\\/]+$/, ''); dir; dir = parentDir(dir)) {
+    const dotGit = `${dir}/.git`
+    if (!(await $.fs.exists(dotGit))) continue
+    const head = await $.fs.read(`${dotGit}/HEAD`).catch(async () => {
+      const gitDir = gitDirFromFile(await $.fs.read(dotGit), dir)
+      return gitDir ? $.fs.read(`${gitDir}/HEAD`) : ''
+    }).catch(() => '')
+    branch = branchFromHead(head)
+    break
+  }
+  s.branch = branch
   $.ui.invalidate('ui.render')
 }
 

@@ -14,7 +14,8 @@ The plugin is submitted to Anthropic's directory, whose portal checks more than 
 
 - **No `types` field in `plugin.json`:** the directory refuses it, and Claude Code needs it for any `$.state` use. So the mod keeps its data in module variables and redraws with `$.ui.invalidate('ui.render')`. Don't reintroduce `$.state` / atoms.
 - **No `options` in `userConfig`:** each option has only `type`, `title`, `description`, `default`. Validate values in code (see `ttlMinutes()`).
-- **README must say what the mod sends and which programs it runs** ("Data and programs" section). Update it when adding a `$.http`, `$.model` or `$.process` call.
+- **No `$.process`, `$.http` or `$.model`:** the portal treats each as a way out, and pairs it with any read of the session (`session.usage`, a `turn.step` hook) as a held finding (`MOD_LOCAL_DATA_LEAVES`, `MOD_SESSION_DATA_LEAVES`, `MOD_RUNS_PROCESS`). That is why the branch is read from `.git/HEAD` with `$.fs` instead of running `git`.
+- **README must say what the mod sends, which programs it runs and which files it reads** ("Data and programs" section, with a table of every `$` call). Keep the table in sync with the `calls:` line `claude plugin validate` prints.
 - **`LICENSE` (MIT) and `.claude-plugin/icon.png`** (square PNG, 512 to 2048 px, under 2 MB). The listing icon is fixed the first time the plugin is saved in the portal.
 - This file lives in `.claude/` because a `CLAUDE.md` at the plugin root makes `validate --strict` fail.
 

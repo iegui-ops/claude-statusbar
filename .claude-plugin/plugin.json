@@ -1,7 +1,7 @@
 {
   "name": "session-vitals",
   "displayName": "Session Vitals",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Your Claude Code session at a glance, under the prompt: context bar, rate limits, prompt cache stats with a live TTL countdown, model and git branch",
   "author": { "name": "Ivan" },
   "license": "MIT",

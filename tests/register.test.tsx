@@ -1,6 +1,20 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, color, fmt, mss, resetLabel, ttlMinutes } from '../hooks/register'
+import { bar, branchFromHead, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
+
+test('the branch is read from .git/HEAD like git does', () => {
+  expect(branchFromHead('ref: refs/heads/main\n')).toBe('main')
+  expect(branchFromHead('ref: refs/heads/feat/x\n')).toBe('feat/x')
+  expect(branchFromHead('0123456789abcdef0123456789abcdef01234567\n')).toBe('0123456')
+  expect(branchFromHead('garbage')).toBe('')
+  expect(gitDirFromFile('gitdir: /repo/.git/worktrees/wt\n', '/wt')).toBe('/repo/.git/worktrees/wt')
+  expect(gitDirFromFile('gitdir: ../repo/.git/worktrees/wt\n', '/src/wt')).toBe('/src/wt/../repo/.git/worktrees/wt')
+  expect(gitDirFromFile('nonsense', '/wt')).toBe('')
+  expect(parentDir('/home/xir/src')).toBe('/home/xir')
+  expect(parentDir('/home')).toBe('')
+  expect(parentDir('C:\\Users\\xir')).toBe('C:\\Users')
+  expect(parentDir('C:')).toBe('')
+})
 
 test('ttlMinutes falls back to the 1-hour cache on bad settings', () => {
   expect(ttlMinutes(5)).toBe(5)
