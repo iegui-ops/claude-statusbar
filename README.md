@@ -2,11 +2,12 @@
 
 Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown.
 
-```
-statusbar  ⎇ main  opus-5-5  5h:47% ↺14:30  7d:39% ↺Wed 07/10 22:00
-██░░░░░░░░░░░░░░░░░░ 11% 108.7k/1.0M  107.3k cache↩  1.4k cache↑  TTL 58:12
-? for shortcuts
-```
+
+
+https://github.com/user-attachments/assets/7832a348-3c4f-4267-bd7a-5f67098578e8
+
+
+
 
 **Line 1:** directory · git branch · model · each rate-limit window Claude Code reports (`5h`, `1d`, `7d`) with its reset time
 **Line 2:** context bar · usage % · tokens used/window · cache read · cache written · prompt cache TTL countdown
