@@ -1,6 +1,6 @@
 # Session Vitals
 
-Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown.
+Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session.
 
 https://github.com/user-attachments/assets/e90d3ce6-5dd2-4e58-aefd-62f5bc15fb9d
 
@@ -13,7 +13,7 @@ Claude Code's own hint line (mode pills, shortcuts) stays, drawn right under it.
 
 ## Requirements
 
-- Claude Code **v2.1.287 or later** (the first version with mods). Tested with **v2.1.288**. The mods API is early access and may change between releases.
+- Claude Code **v2.1.287 or later** (the first version with mods). Tested with **v2.1.289**. `/cache-ttl` needs a version that reads `CLAUDE_CODE_PROMPT_CACHE_TTL` (v2.1.289 does); on an older one the command runs but the TTL does not change. The mods API is early access and may change between releases.
 No Python, no `git` binary, no daemon, no service: everything runs inside the Claude Code session, on any OS Claude Code runs on.
 
 ## Install
@@ -41,9 +41,37 @@ Start a new session. If you still have a `statusLine` entry in `~/.claude/settin
 
 | Option | Type | Default | What it does |
 |--------|------|---------|--------------|
-| `ttlMinutes` | number | `60` | Prompt cache lifetime the countdown uses, in minutes. Use `5` for the API's default cache, `60` for the 1-hour cache Claude Code uses on subscriptions. A missing, zero or invalid value falls back to `60`. |
+| `ttlMinutes` | number | `60` | Countdown length, in minutes, when the cache TTL is left automatic (see below). Use `60` on a Claude subscription, `5` on an API key, Bedrock, Vertex or Foundry. A missing, zero or invalid value falls back to `60`. |
 
 Change it from the plugin's row in Claude Code's config menu; the mod reloads with the new value.
+
+### Prompt cache TTL
+
+The countdown follows the TTL Claude Code actually uses, resolved as Claude Code does on each request: `FORCE_PROMPT_CACHING_5M`, then the `CLAUDE_CODE_PROMPT_CACHE_TTL` variable, then the `promptCacheTtl` setting (`"5m"` or `"1h"`). With none set the TTL is automatic and the countdown uses `ttlMinutes`.
+
+#### `/cache-ttl`
+
+| Command | What it does |
+|---------|--------------|
+| `/cache-ttl` | Shows the TTL in use, where it comes from and how long the current cache entry has left. |
+| `/cache-ttl 5m` | Uses the 5-minute cache for the rest of the session. |
+| `/cache-ttl 1h` | Uses the 1-hour cache for the rest of the session. |
+| `/cache-ttl auto` | Goes back to the `promptCacheTtl` setting, or to automatic when there is none. |
+
+```
+❯ /cache-ttl 1h
+  ⎿  session-vitals: Prompt cache TTL: 60 min (/cache-ttl or CLAUDE_CODE_PROMPT_CACHE_TTL); cache expires in 4:55. The new TTL applies from the next request.
+```
+
+How it works: it sets (or, with `auto`, unsets) `CLAUDE_CODE_PROMPT_CACHE_TTL` in Claude Code's own process. Claude Code reads that variable on every request, so no restart is needed.
+
+- **From the next request.** The cache entry already written keeps its lifetime (the `4:55` above) until the next request writes it again with the new TTL; then the countdown jumps.
+- **This session only.** It is gone when the session ends. For a permanent choice, set `"promptCacheTtl": "5m"` or `"1h"` in `~/.claude/settings.json`.
+- **Main conversation only.** Subagents and background requests follow `subagentPromptCacheTtl` (5 minutes by default).
+- **Inherited by child processes.** Bash commands started afterwards see the variable, so a `claude` launched from them starts with that TTL.
+- **Cost.** The command itself never calls the model; its output line goes into the transcript like any local command's (`/cost`, `/context`), a few dozen tokens in the next prompt. The TTL is what changes the bill: 1-hour cache writes cost more than 5-minute ones, but a 5-minute cache is written again in full after any pause longer than 5 minutes.
+
+After the mod reloads (an update, or a change to its config) the countdown is empty until the next model response; the TTL set with `/cache-ttl` is kept.
 
 ## How it works
 
@@ -55,7 +83,9 @@ Everything is in `hooks/register.tsx`:
 - **Branch:** read from `.git/HEAD`, found by walking up from the session's folder as git does (worktrees and detached HEADs included), at session start and after each turn. No `git` process is started.
 - **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the two lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
 
-**Token cost: zero.** The mod never calls the model, never changes the system prompt or the messages; it only reads figures Claude Code already has.
+- **`/cache-ttl`:** a slash command the mod registers (`$.command.register`) and answers itself (`command.run`), without the model.
+
+**Token cost: zero.** The mod never calls the model, never changes the system prompt or the messages; it only reads figures Claude Code already has. The one exception is the output line of `/cache-ttl`, which goes into the transcript when you run it.
 
 ## Data and programs
 
@@ -77,10 +107,14 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.session.cwd()` | Gets the session's folder, where the search for `.git` starts. | Reads a path Claude Code already has; sends nothing. |
 | `$.fs.exists(path)` | Checks whether a folder has a `.git` entry, walking up from the session's folder. | Local file check only. |
 | `$.fs.read(path)` | Reads git's `HEAD` file (and, in a worktree, the `.git` file pointing to it) to get the branch name. | Local file read; the branch name is only displayed. |
+| `$.env.get(name)` | Reads `CLAUDE_CODE_PROMPT_CACHE_TTL` and `FORCE_PROMPT_CACHING_5M`, to know the cache TTL. | Reads Claude Code's own environment; sends nothing. |
+| `$.env.set(name, value)` | Sets or unsets `CLAUDE_CODE_PROMPT_CACHE_TTL`, only when you run `/cache-ttl`. | Changes Claude Code's own environment for this session; sends nothing. |
+| `$.settings.read()` | Reads the `promptCacheTtl` setting, to know the cache TTL. Nothing else is used. | Local settings read; sends nothing. |
+| `$.command.register(spec)` | Adds the `/cache-ttl` slash command. | Local only. |
 | `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |
 | `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
 
-The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. The only thing it changes is the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its two lines above Claude Code's own hint.
+The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. It changes two things: the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its two lines above Claude Code's own hint, and, only when you run `/cache-ttl` (`command.run`), the prompt cache TTL of the session.
 
 ## Migrating from v1
 

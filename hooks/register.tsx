@@ -43,6 +43,40 @@ export const ttlMinutes = (v: unknown) => {
   return Number.isFinite(n) && n > 0 ? n : 60
 }
 
+// The main conversation's cache lifetime in minutes, resolved as Claude Code does on each request:
+// FORCE_PROMPT_CACHING_5M, then CLAUDE_CODE_PROMPT_CACHE_TTL, then the `promptCacheTtl` setting.
+// None set means automatic (1h on a subscription, 5m on an API key), which a mod can't see: `fallback`.
+// Returns the minutes and where they came from.
+export const cacheTtl = (force: string | undefined, env: string | undefined, setting: unknown, fallback: number) => {
+  if (/^(1|true|yes|on)$/i.test(force?.trim() ?? '')) return { min: 5, from: 'FORCE_PROMPT_CACHING_5M' }
+  const e = env?.trim()
+  if (e === '5m' || e === '1h') return { min: e === '5m' ? 5 : 60, from: '/cache-ttl or CLAUDE_CODE_PROMPT_CACHE_TTL' }
+  if (setting === '5m' || setting === '1h') return { min: setting === '5m' ? 5 : 60, from: 'promptCacheTtl setting' }
+  return { min: fallback, from: 'automatic, ttlMinutes option' }
+}
+
+// A failed read falls back to ttlMinutes rather than stopping the countdown.
+async function currentTtl($: EngineInterface, fallback: number) {
+  try {
+    const force = await $.env.get('FORCE_PROMPT_CACHING_5M')
+    const env = await $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL')
+    const { promptCacheTtl } = await $.settings.read()
+    return cacheTtl(force, env, promptCacheTtl, fallback)
+  } catch {
+    return cacheTtl(undefined, undefined, undefined, fallback)
+  }
+}
+
+// `/cache-ttl 5m|1h|auto`: Claude Code reads the variable on every request, so the next one uses it.
+async function setTtl($: EngineInterface, args: string, fallback: number) {
+  const v = args.trim()
+  if (v && v !== '5m' && v !== '1h' && v !== 'auto') return { text: 'Usage: /cache-ttl [5m | 1h | auto]' }
+  if (v) await $.env.set('CLAUDE_CODE_PROMPT_CACHE_TTL', v === 'auto' ? undefined : v)
+  const { min, from } = await currentTtl($, fallback)
+  const left = s.ttlLeft !== null ? `cache expires in ${mss(s.ttlLeft)}` : 'no live cache entry (the countdown starts with the next response)'
+  return { text: `Prompt cache TTL: ${min} min (${from}); ${left}.${v ? ' The new TTL applies from the next request.' : ''}` }
+}
+
 // The branch a HEAD file names, or the short hash of a detached HEAD; '' for anything else.
 export const branchFromHead = (head: string) => {
   const t = head.trim()
@@ -92,8 +126,8 @@ async function countdown($: EngineInterface, expiresAt: number) {
 }
 
 export const register: Register = (on, options) => {
-  const ttlMs = ttlMinutes(options.ttlMinutes) * 60_000
-  // The prompt cache entry lives ttlMs from its last write or read; one timer ticks while it lives.
+  const fallback = ttlMinutes(options.ttlMinutes)
+  // The prompt cache entry lives the TTL from its last write or read; one timer ticks while it lives.
   let expiresAt = 0
   let tick: Timer | null = null
 
@@ -103,8 +137,11 @@ export const register: Register = (on, options) => {
     s.limits = rateLimits
     s.dir = e.cwd.replace(/\/+$/, '').split('/').pop() || e.cwd
     await refreshBranch($)
+    await $.command.register({ name: 'cache-ttl', description: 'Set the prompt cache TTL for this session', argumentHint: '5m|1h|auto' })
     return next(e)
   })
+
+  on('command.run', { command: 'cache-ttl' }, ($, e) => setTtl($, e.args, fallback))
 
   on('session.measure', ($, e, next) => {
     s.context = e.context
@@ -120,7 +157,7 @@ export const register: Register = (on, options) => {
     s.cache = { read: r.usage.cache_read_input_tokens, created: r.usage.cache_creation_input_tokens, model: r.usage.model }
     $.ui.invalidate('ui.render')
     if (s.cache.read + s.cache.created > 0) {
-      expiresAt = (await $.clock.now()) + ttlMs
+      expiresAt = (await $.clock.now()) + (await currentTtl($, fallback)).min * 60_000
       tick ??= $.clock.every(1000, () => {
         void countdown($, expiresAt).then(alive => {
           if (!alive) {

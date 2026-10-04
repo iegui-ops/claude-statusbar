@@ -38,7 +38,7 @@ All logic is `hooks/register.tsx`:
 
 - **State:** one module object `s` written from events and read by the render hook; every write is followed by `$.ui.invalidate('ui.render')`.
 - **Data flow:** `session.start` seeds dir/branch/usage; `session.measure` pushes context and rate limits; `turn.step` (a streaming event, so the hook must be `async function*` with `yield* next(e)`) reads each main-thread response's cache usage and restarts the TTL; `turn.complete` re-reads the branch.
-- **TTL:** cache read or write restarts it (using a cache entry refreshes it); responses with `agentId` (subagents) are ignored. Lifetime comes from the `ttlMinutes` userConfig option.
+- **TTL:** cache read or write restarts it (using a cache entry refreshes it); responses with `agentId` (subagents) are ignored. Lifetime is resolved like the engine does (`FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `promptCacheTtl` setting), falling back to the `ttlMinutes` userConfig option. `/cache-ttl` sets the env var with `$.env.set`; the engine re-reads it on every request (verified with `claude -p --output-format json`, `usage.cache_creation.ephemeral_5m_input_tokens`).
 - **Rendering:** `ui.render` on `PromptHint`, wrapping `await next(e)` so the engine's hint line stays under our two lines and keeps updating. Mods cannot replace the built-in `statusLine` slot; `PromptHint` is the nearest.
 
 ## Gotchas the validator enforces

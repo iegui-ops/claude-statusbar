@@ -1,6 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, branchFromHead, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
+import { bar, branchFromHead, cacheTtl, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
+
+test('cacheTtl resolves the TTL in Claude Code order', () => {
+  expect(cacheTtl('1', '1h', '1h', 60)).toEqual({ min: 5, from: 'FORCE_PROMPT_CACHING_5M' })
+  expect(cacheTtl(undefined, '5m', '1h', 60).min).toBe(5)
+  expect(cacheTtl(undefined, 'junk', '5m', 60)).toEqual({ min: 5, from: 'promptCacheTtl setting' })
+  expect(cacheTtl('0', undefined, '1h', 5).min).toBe(60)
+  expect(cacheTtl(undefined, undefined, undefined, 5)).toEqual({ min: 5, from: 'automatic, ttlMinutes option' })
+})
 
 test('the branch is read from .git/HEAD like git does', () => {
   expect(branchFromHead('ref: refs/heads/main\n')).toBe('main')
