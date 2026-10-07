@@ -1,7 +1,7 @@
 {
   "name": "session-vitals",
   "displayName": "Session Vitals",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Your Claude Code session at a glance, under the prompt: context bar, rate limits, prompt cache stats with a live TTL countdown, model and git branch",
   "author": { "name": "Ivan" },
   "license": "MIT",
@@ -13,6 +13,12 @@
       "title": "Automatic prompt cache TTL (minutes)",
       "description": "Countdown length when no TTL is set (no /cache-ttl, promptCacheTtl setting or CLAUDE_CODE_PROMPT_CACHE_TTL): 60 on a subscription, 5 on an API key",
       "default": 60
+    },
+    "expiryTo5m": {
+      "type": "boolean",
+      "title": "First turn after the cache expires uses the 5-minute cache",
+      "description": "When the countdown reaches zero, the next turn writes the cache with the 5m TTL (cheaper after a long pause); the TTL you had comes back once that turn ends",
+      "default": false
     }
   }
 }

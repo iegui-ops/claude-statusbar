@@ -42,8 +42,14 @@ Start a new session. If you still have a `statusLine` entry in `~/.claude/settin
 | Option | Type | Default | What it does |
 |--------|------|---------|--------------|
 | `ttlMinutes` | number | `60` | Countdown length, in minutes, when the cache TTL is left automatic (see below). Use `60` on a Claude subscription, `5` on an API key, Bedrock, Vertex or Foundry. A missing, zero or invalid value falls back to `60`. |
+| `expiryTo5m` | boolean | `false` | When the countdown reaches zero, the first turn after it uses the 5-minute cache; then the TTL you had comes back (see below). |
 
-Change it from the plugin's row in Claude Code's config menu; the mod reloads with the new value.
+Change them in `/config` (Config tab): type `cache` to filter, select the row ending in `· session-vitals` and press Enter or Space. The mod reloads with the new value. They are saved under `pluginConfigs` in `~/.claude/settings.json`.
+
+```
+  Automatic prompt cache TTL (minutes) · session-vitals          60 ›
+❯ First turn after the cache expires uses the 5-minute cache · session-vitals  true
+```
 
 ### Prompt cache TTL
 
@@ -70,6 +76,12 @@ How it works: it sets (or, with `auto`, unsets) `CLAUDE_CODE_PROMPT_CACHE_TTL` i
 - **Main conversation only.** Subagents and background requests follow `subagentPromptCacheTtl` (5 minutes by default).
 - **Inherited by child processes.** Bash commands started afterwards see the variable, so a `claude` launched from them starts with that TTL.
 - **Cost.** The command itself never calls the model; its output line goes into the transcript like any local command's (`/cost`, `/context`), a few dozen tokens in the next prompt. The TTL is what changes the bill: 1-hour cache writes cost more than 5-minute ones, but a 5-minute cache is written again in full after any pause longer than 5 minutes.
+
+#### Switch to 5 minutes when the cache expires
+
+Off by default. To turn it on, open `/config`, find **First turn after the cache expires uses the 5-minute cache · session-vitals** and press Enter so it reads `true`.
+
+With `expiryTo5m` on, when the countdown reaches zero the mod remembers the TTL in use and sets `5m`, unless the TTL is already 5 minutes. A cache that expired means you were away longer than its TTL, and the next request writes the whole cache again: a 5-minute write costs 1.25x the input price against 2x for a 1-hour one. That first turn (every request in it, tool calls included) uses 5 minutes; when it ends the mod puts back the TTL it remembered (or unsets the variable, if it was unset), so your next prompt uses your usual TTL again. Running `/cache-ttl 5m`, `1h` or `auto` in between cancels the restore. The switch only happens while the session is open with the countdown running.
 
 After the mod reloads (an update, or a change to its config) the countdown is empty until the next model response; the TTL set with `/cache-ttl` is kept.
 
@@ -108,7 +120,7 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.fs.exists(path)` | Checks whether a folder has a `.git` entry, walking up from the session's folder. | Local file check only. |
 | `$.fs.read(path)` | Reads git's `HEAD` file (and, in a worktree, the `.git` file pointing to it) to get the branch name. | Local file read; the branch name is only displayed. |
 | `$.env.get(name)` | Reads `CLAUDE_CODE_PROMPT_CACHE_TTL` and `FORCE_PROMPT_CACHING_5M`, to know the cache TTL. | Reads Claude Code's own environment; sends nothing. |
-| `$.env.set(name, value)` | Sets or unsets `CLAUDE_CODE_PROMPT_CACHE_TTL`, only when you run `/cache-ttl`. | Changes Claude Code's own environment for this session; sends nothing. |
+| `$.env.set(name, value)` | Sets or unsets `CLAUDE_CODE_PROMPT_CACHE_TTL`, only when you run `/cache-ttl`, or (with `expiryTo5m` on) to `5m` when the countdown reaches zero and back to what it was when the next turn ends. | Changes Claude Code's own environment for this session; sends nothing. |
 | `$.settings.read()` | Reads the `promptCacheTtl` setting, to know the cache TTL. Nothing else is used. | Local settings read; sends nothing. |
 | `$.command.register(spec)` | Adds the `/cache-ttl` slash command. | Local only. |
 | `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |

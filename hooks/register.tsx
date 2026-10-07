@@ -71,7 +71,10 @@ async function currentTtl($: EngineInterface, fallback: number) {
 async function setTtl($: EngineInterface, args: string, fallback: number) {
   const v = args.trim()
   if (v && v !== '5m' && v !== '1h' && v !== 'auto') return { text: 'Usage: /cache-ttl [5m | 1h | auto]' }
-  if (v) await $.env.set('CLAUDE_CODE_PROMPT_CACHE_TTL', v === 'auto' ? undefined : v)
+  if (v) {
+    restoreTtl = null // an explicit choice wins over a pending restore
+    await $.env.set('CLAUDE_CODE_PROMPT_CACHE_TTL', v === 'auto' ? undefined : v)
+  }
   const { min, from } = await currentTtl($, fallback)
   const left = s.ttlLeft !== null ? `cache expires in ${mss(s.ttlLeft)}` : 'no live cache entry (the countdown starts with the next response)'
   return { text: `Prompt cache TTL: ${min} min (${from}); ${left}.${v ? ' The new TTL applies from the next request.' : ''}` }
@@ -117,6 +120,25 @@ async function refreshBranch($: EngineInterface) {
   $.ui.invalidate('ui.render')
 }
 
+// CLAUDE_CODE_PROMPT_CACHE_TTL as it was before the cache expired (undefined: unset), to put back
+// once a turn has written the cache at 5m (`used`); null when nothing is waiting.
+let restoreTtl: { value: string | undefined; used: boolean } | null = null
+
+// After a long pause a fresh 1h cache write costs 2x input, a 5m one 1.25x: the first turn
+// after it uses 5m, then the TTL it had comes back. Nothing to do when the TTL is already 5m.
+async function dropTo5m($: EngineInterface, fallback: number) {
+  if ((await currentTtl($, fallback)).min <= 5) return
+  restoreTtl = { value: await $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL'), used: false }
+  await $.env.set('CLAUDE_CODE_PROMPT_CACHE_TTL', '5m')
+}
+
+async function restoreAfterDrop($: EngineInterface) {
+  if (!restoreTtl?.used) return
+  const { value } = restoreTtl
+  restoreTtl = null
+  await $.env.set('CLAUDE_CODE_PROMPT_CACHE_TTL', value)
+}
+
 // Sets the seconds left (null once expired); false when the countdown is over.
 async function countdown($: EngineInterface, expiresAt: number) {
   const left = Math.ceil((expiresAt - (await $.clock.now())) / 1000)
@@ -127,6 +149,7 @@ async function countdown($: EngineInterface, expiresAt: number) {
 
 export const register: Register = (on, options) => {
   const fallback = ttlMinutes(options.ttlMinutes)
+  const expiryTo5m = options.expiryTo5m === true
   // The prompt cache entry lives the TTL from its last write or read; one timer ticks while it lives.
   let expiresAt = 0
   let tick: Timer | null = null
@@ -163,15 +186,20 @@ export const register: Register = (on, options) => {
           if (!alive) {
             tick?.cancel()
             tick = null
+            if (expiryTo5m) void dropTo5m($, fallback)
           }
         })
       })
       await countdown($, expiresAt)
+      // This response wrote the cache at 5m; the TTL comes back when the turn ends.
+      if (restoreTtl) restoreTtl.used = true
     }
     return r
   })
 
   on('turn.complete', async ($, e, next) => {
+    // A subagent's turn ends with its own turn.complete (with agentId); only the main one restores.
+    if (!e.agentId) await restoreAfterDrop($)
     await refreshBranch($)
     return next(e)
   })
