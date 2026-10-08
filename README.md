@@ -1,6 +1,6 @@
 # Session Vitals
 
-Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session.
+Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session, and an option to rewrite an expired cache at the cheaper 5-minute price for one turn.
 
 https://github.com/user-attachments/assets/938b09bf-3839-4848-b7fb-b58726b43734
 
@@ -96,6 +96,7 @@ Everything is in `hooks/register.tsx`:
 - **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the two lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
 
 - **`/cache-ttl`:** a slash command the mod registers (`$.command.register`) and answers itself (`command.run`), without the model.
+- **`expiryTo5m`:** when the countdown timer finds the cache expired it sets the TTL to `5m` (`$.env.set`); the main thread's `turn.complete` (not a subagent's) puts the previous TTL back once a response has written the cache.
 
 **Token cost: zero.** The mod never calls the model, never changes the system prompt or the messages; it only reads figures Claude Code already has. The one exception is the output line of `/cache-ttl`, which goes into the transcript when you run it.
 
