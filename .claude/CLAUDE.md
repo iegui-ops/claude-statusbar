@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Session Vitals** (`session-vitals`), a Claude Code mod (function-hook plugin): the repo root is the plugin folder and also a one-plugin marketplace (`iegui-ops`, `.claude-plugin/marketplace.json`). It draws two lines under the prompt with a live prompt cache TTL countdown. The previous Python statusline + TTL daemon lives on the `v1` tag; `main` is the mod only.
+**Session Vitals** (`session-vitals`), a Claude Code mod (function-hook plugin): the repo root is the plugin folder and also a one-plugin marketplace (`iegui-ops`, `.claude-plugin/marketplace.json`). It draws three lines under the prompt (context bar by category, legend, live prompt cache TTL countdown); clicking a legend entry opens a pane listing what fills it. The previous Python statusline + TTL daemon lives on the `v1` tag; `main` is the mod only.
 
 The plugin `name` is permanent (users install `session-vitals@iegui-ops`); change `displayName` instead.
 
@@ -37,12 +37,12 @@ Loaded in every session through `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings
 All logic is `hooks/register.tsx`:
 
 - **State:** one module object `s` written from events and read by the render hook; every write is followed by `$.ui.invalidate('ui.render')`.
-- **Data flow:** `session.start` seeds dir/branch/usage; `session.measure` pushes context and rate limits; `turn.step` (a streaming event, so the hook must be `async function*` with `yield* next(e)`) reads each main-thread response's cache usage and restarts the TTL; `turn.complete` re-reads the branch.
+- **Data flow:** `session.start` seeds dir/branch/usage; `session.measure` pushes context and rate limits and, when the context changed, re-reads the per-category breakdown (`$.session.usage({ breakdown: 'summary' })`); `turn.step` (a streaming event, so the hook must be `async function*` with `yield* next(e)`) reads each main-thread response's cache usage and restarts the TTL; `turn.complete` re-reads the branch.
 - **TTL:** cache read or write restarts it (using a cache entry refreshes it); responses with `agentId` (subagents) are ignored. Lifetime is resolved like the engine does (`FORCE_PROMPT_CACHING_5M`, `CLAUDE_CODE_PROMPT_CACHE_TTL`, `promptCacheTtl` setting), falling back to the `ttlMinutes` userConfig option. `/cache-ttl` sets the env var with `$.env.set`; the engine re-reads it on every request (verified with `claude -p --output-format json`, `usage.cache_creation.ephemeral_5m_input_tokens`).
-- **Rendering:** `ui.render` on `PromptHint`, wrapping `await next(e)` so the engine's hint line stays under our two lines and keeps updating. Mods cannot replace the built-in `statusLine` slot; `PromptHint` is the nearest.
+- **Rendering:** `ui.render` on `PromptHint`, wrapping `await next(e)` so the engine's hint line stays under our three lines and keeps updating. Legend entries are `Button`s whose `onPress` runs `showDetail`, which fills `s.detail` and opens the `context-detail` pane (`ui.render` on `Pane`). Mods cannot replace the built-in `statusLine` slot; `PromptHint` is the nearest.
 
 ## Gotchas the validator enforces
 
 - A function that receives `$` must be declared at the top level of the module (not a closure inside `register`).
-- Pure helpers (`color`, `bar`, `fmt`, `mss`, `resetLabel`, `ttlMinutes`) are exported for the tests; the formatting ones must keep matching the v1 Python formats.
+- Pure helpers (`color`, `bar`, `ctxBar`, `breakdownLines`, `fmt`, `mss`, `resetLabel`, `ttlMinutes`) are exported for the tests; the formatting ones must keep matching the v1 Python formats.
 - Nothing answers engine ops in a test unless the test registers an `on` hook for them, so the render test draws the empty state.
