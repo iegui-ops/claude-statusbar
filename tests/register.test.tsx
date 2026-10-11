@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, branchFromHead, cacheTtl, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
+import { bar, branchFromHead, ctxBar, cacheTtl, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
 
 test('cacheTtl resolves the TTL in Claude Code order', () => {
   expect(cacheTtl('1', '1h', '1h', 60)).toEqual({ min: 5, from: 'FORCE_PROMPT_CACHING_5M' })
@@ -55,6 +55,11 @@ test('formats match the old statusline.py', () => {
   expect(color(60)).toBe('yellow')
   expect(color(85)).toBe('red')
   expect(bar(31)).toBe('██████░░░░░░░░░░░░░░')
+  // 10% + 0 + tiny (min 1 cell), compaction at 80% of the window
+  expect(ctxBar([{ tokens: 100, color: 'a' }, { tokens: 0, color: 'b' }, { tokens: 1, color: 'c' }], 1000, 800)).toEqual([
+    ['██', 'a'], ['█', 'c'], ['░'.repeat(13), undefined], ['▏', 'warning'], ['░'.repeat(3), undefined],
+  ])
+  expect(ctxBar([{ tokens: 900, color: 'a' }], 1000, 800).map(p => p[0]).join('')).toBe('█'.repeat(18) + '░░')
   expect(fmt(745)).toBe('745')
   expect(fmt(62_900)).toBe('62.9k')
   expect(fmt(1_200_000)).toBe('1.2M')

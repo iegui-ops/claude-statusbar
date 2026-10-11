@@ -11,6 +11,10 @@ const s = {
   context: null as SessionContextUsage | null,
   limits: [] as readonly Limit[],
   ttlLeft: null as number | null,
+  // /context's categories (system prompt, tools, messages...), for the coloured bar and legend.
+  rows: [] as { name: string; tokens: number; color: string }[],
+  compactAt: undefined as number | undefined,
+  max: 0,
 }
 
 const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', one_day: '1d', seven_day: '7d' }
@@ -25,7 +29,33 @@ export const bar = (pct: number, width = 20) => {
   return '█'.repeat(filled) + '░'.repeat(width - filled)
 }
 
-export const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+// The context bar split by category: cells per used row (at least 1 for any row with tokens),
+// then free cells with a `▏` where auto-compaction runs. Returns [text, colour] pieces.
+export const ctxBar = (rows: { tokens: number; color: string }[], max: number, compactAt: number | undefined, width = 20) => {
+  const out: [string, string | undefined][] = []
+  let used = 0
+  for (const r of rows) {
+    const n = Math.min(width - used, r.tokens > 0 ? Math.max(1, Math.round((r.tokens / max) * width)) : 0)
+    if (n > 0) out.push(['█'.repeat(n), r.color])
+    used += n
+  }
+  const rest = width - used
+  const mark = compactAt ? Math.round((compactAt / max) * width) - used : -1
+  if (mark < 0 || mark >= rest) return [...out, ['░'.repeat(rest), undefined]] as typeof out
+  return [...out, ['░'.repeat(mark), undefined], ['▏', 'warning'], ['░'.repeat(rest - mark - 1), undefined]] as typeof out
+}
+
+// ponytail: "summary" = local estimate, free; "full" counts with the token-count API
+async function refreshBreakdown($: EngineInterface) {
+  const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+  if (!b) return
+  s.rows = b.categories.filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens, color: c.color }))
+  s.max = b.rawMaxTokens
+  s.compactAt = b.isAutoCompactEnabled ? b.autoCompactThreshold : undefined
+  $.ui.invalidate('ui.render')
+}
+
+export const mss =(s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 const pad = (n: number) => String(n).padStart(2, '0')
 export const resetLabel = (rl: Limit) => {
@@ -159,6 +189,7 @@ export const register: Register = (on, options) => {
     s.context = context
     s.limits = rateLimits
     s.dir = e.cwd.replace(/\/+$/, '').split('/').pop() || e.cwd
+    void refreshBreakdown($)
     await refreshBranch($)
     await $.command.register({ name: 'cache-ttl', description: 'Set the prompt cache TTL for this session', argumentHint: '5m|1h|auto' })
     return next(e)
@@ -169,6 +200,7 @@ export const register: Register = (on, options) => {
   on('session.measure', ($, e, next) => {
     s.context = e.context
     s.limits = e.rateLimits
+    if (e.changed.includes('context')) void refreshBreakdown($)
     $.ui.invalidate('ui.render')
     return next(e)
   })
@@ -209,8 +241,9 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const { Box, Text } = $.ui.resolve(e)
     const hint = await next(e)
-    const { dir, branch, cache: c, context, limits, ttlLeft } = s
+    const { dir, branch, cache: c, context, limits, ttlLeft, rows, compactAt, max } = s
     const pct = context?.percent ?? 0
+    const pieces = rows.length && max ? ctxBar(rows, max, compactAt) : null
 
     return (
       <Box flexDirection="column">
@@ -227,11 +260,26 @@ export const register: Register = (on, options) => {
           ))}
         </Text>
         <Text>
-          <Text color={color(pct)}>{`${bar(pct)} ${pct}%`}</Text>
+          {pieces
+            ? <Text>{pieces.map(([t, col]) => <Text color={col} dimColor={!col}>{t}</Text>)}<Text color={color(pct)}>{` ${pct}%`}</Text></Text>
+            : <Text color={color(pct)}>{`${bar(pct)} ${pct}%`}</Text>}
           {context?.tokens ? <Text color="white">{` ${fmt(context.tokens)}/${fmt(context.window)}`}</Text> : null}
+          {compactAt ? <Text dimColor>{` ⇥${fmt(compactAt)}`}</Text> : null}
           {c ? <Text dimColor>{`  ${fmt(c.read)} cache↩  ${fmt(c.created)} cache↑`}</Text> : null}
           {ttlLeft !== null ? <Text dimColor>{`  TTL ${mss(ttlLeft)}`}</Text> : null}
         </Text>
+        {rows.length ? (
+          <Text>
+            {rows.map((r, i) => (
+              <Text>
+                {i ? '  ' : ''}
+                <Text color={r.color}>■ </Text>
+                <Text dimColor>{`${r.name.toLowerCase()} `}</Text>
+                {fmt(r.tokens)}
+              </Text>
+            ))}
+          </Text>
+        ) : null}
         {hint}
       </Box>
     )

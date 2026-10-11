@@ -114,7 +114,7 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 
 | Call | What it does here | Data in / out |
 |------|-------------------|---------------|
-| `$.session.usage()` | Reads the context window fill and rate-limit windows once, at session start. | Reads figures Claude Code already has; sends nothing. |
+| `$.session.usage()` | Reads the context window fill and rate-limit windows at session start, and the per-category breakdown (`summary`, a local estimate) at start and whenever the context changes. | Reads figures Claude Code already has; sends nothing. |
 | `$.clock.now()` | Reads the current time, to compute when the prompt cache expires. | Local clock only. |
 | `$.clock.every(1000, fn)` | Ticks once a second while the prompt cache is alive, to update the TTL countdown; cancelled when it expires. | Local timer only. |
 | `$.session.cwd()` | Gets the session's folder, where the search for `.git` starts. | Reads a path Claude Code already has; sends nothing. |
