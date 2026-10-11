@@ -1,13 +1,31 @@
 # Session Vitals
 
-Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws two lines under the prompt: context usage, model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session, and an option to rewrite an expired cache at the cheaper 5-minute price for one turn.
+Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws three lines under the prompt: context usage broken down by category (as `/context` shows it), model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. Click a category to see what fills it. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session, and an option to rewrite an expired cache at the cheaper 5-minute price for one turn.
 
 https://github.com/user-attachments/assets/938b09bf-3839-4848-b7fb-b58726b43734
 
 **Line 1:** directory · git branch · model · each rate-limit window Claude Code reports (`5h`, `1d`, `7d`) with its reset time
-**Line 2:** context bar · usage % · tokens used/window · cache read · cache written · prompt cache TTL countdown
+**Line 2:** context bar coloured by category, with a `▏` where auto-compaction runs · usage % · tokens used/window · auto-compact threshold (`⇥167k`) · cache read · cache written · prompt cache TTL countdown
+**Line 3:** legend: each category in the context (system prompt, system tools, MCP tools, MCP server instructions, custom agents, memory files, skills, messages) with its tokens
 
-Claude Code's own hint line (mode pills, shortcuts) stays, drawn right under it.
+Claude Code's own hint line (mode pills, shortcuts) stays, drawn right under it. Until the first breakdown arrives, line 2 shows a plain bar and line 3 is left out.
+
+### What fills the context
+
+Click a category in the legend and a pane opens with what is in it; Esc closes it.
+
+| Click | The pane lists |
+|-------|----------------|
+| `skills` | how many skills are listed out of how many, then each skill with its source and tokens, biggest first |
+| `mcp tools` | each loaded MCP tool with its server and tokens |
+| `custom agents` | each agent with where it was defined and its tokens |
+| `memory files` | each CLAUDE.md, rules or auto-memory file with its path, type and tokens |
+| `system prompt` | the system prompt in full, section by section (the pane scrolls) |
+| `system tools` | each built-in tool with the first line of its description |
+| `mcp server instructions` | the system prompt sections about MCP servers |
+| `messages` | how many messages, then one line per message |
+
+The token figures are `/context`'s summary estimates. Opening a pane never calls the model and costs no tokens.
 
 > Looking for the old Python statusline + TTL daemon? It lives on the [`v1` tag](../../tree/v1). See [Migrating from v1](#migrating-from-v1).
 
@@ -89,11 +107,12 @@ After the mod reloads (an update, or a change to its config) the countdown is em
 
 Everything is in `hooks/register.tsx`:
 
-- **Context, rate limits:** read from the session (`$.session.usage()` at start, then the `session.measure` event whenever a figure moves).
+- **Context, rate limits:** read from the session (`$.session.usage()` at start, then the `session.measure` event whenever a figure moves). The per-category breakdown comes from `$.session.usage({ breakdown: 'summary' })`, a local estimate, at start and whenever the context changes.
+- **Detail pane:** each legend entry is a button. A click reads what fills that category (from the breakdown, or `$.prompt.compose()`, `$.tool.list()`, `$.session.messages()`) and opens a pane (`$.ui.open`) drawn by a `ui.render` hook on `Pane`.
 - **Cache stats and TTL:** every main-thread model response (`turn.step`) reports its cache read and cache write tokens. Any response that read or wrote the cache restarts the countdown, since using a cache entry refreshes its lifetime. Subagents keep their own cache, so they are ignored.
 - **Countdown:** a 1-second timer (`$.clock.every`) inside the mod, cancelled once the cache expires.
 - **Branch:** read from `.git/HEAD`, found by walking up from the session's folder as git does (worktrees and detached HEADs included), at session start and after each turn. No `git` process is started.
-- **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the two lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
+- **Drawing:** a `ui.render` hook on `PromptHint` (the hint line under the prompt) draws the three lines and keeps the engine's own hint under them. A mod cannot take over the slot of the built-in `statusLine` command; this is the nearest place.
 
 - **`/cache-ttl`:** a slash command the mod registers (`$.command.register`) and answers itself (`command.run`), without the model.
 - **`expiryTo5m`:** when the countdown timer finds the cache expired it sets the TTL to `5m` (`$.env.set`); the main thread's `turn.complete` (not a subagent's) puts the previous TTL back once a response has written the cache.
@@ -115,6 +134,10 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | Call | What it does here | Data in / out |
 |------|-------------------|---------------|
 | `$.session.usage()` | Reads the context window fill and rate-limit windows at session start, and the per-category breakdown (`summary`, a local estimate) at start and whenever the context changes. | Reads figures Claude Code already has; sends nothing. |
+| `$.prompt.compose()` | Only when you click `system prompt` or `mcp server instructions` in the legend: composes the system prompt to list its sections in the detail pane. Nothing is sent. | Reads what Claude Code would send; displayed only. |
+| `$.tool.list()` | Only when you click `system tools`: lists the built-in tools and their descriptions. | Reads Claude Code's tool list; displayed only. |
+| `$.session.messages()` | Only when you click `messages`: lists the conversation's messages, one line each. | Reads the transcript Claude Code already has; displayed only. |
+| `$.ui.open(pane)` | Opens the detail pane for the category you clicked (Esc closes it). | Local UI only. |
 | `$.clock.now()` | Reads the current time, to compute when the prompt cache expires. | Local clock only. |
 | `$.clock.every(1000, fn)` | Ticks once a second while the prompt cache is alive, to update the TTL countdown; cancelled when it expires. | Local timer only. |
 | `$.session.cwd()` | Gets the session's folder, where the search for `.git` starts. | Reads a path Claude Code already has; sends nothing. |
@@ -124,10 +147,10 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.env.set(name, value)` | Sets or unsets `CLAUDE_CODE_PROMPT_CACHE_TTL`, only when you run `/cache-ttl`, or (with `expiryTo5m` on) to `5m` when the countdown reaches zero and back to what it was when the next turn ends. | Changes Claude Code's own environment for this session; sends nothing. |
 | `$.settings.read()` | Reads the `promptCacheTtl` setting, to know the cache TTL. Nothing else is used. | Local settings read; sends nothing. |
 | `$.command.register(spec)` | Adds the `/cache-ttl` slash command. | Local only. |
-| `$.ui.resolve(e)` | Gets the text elements (`Box`, `Text`) to draw the two lines with. | Local drawing only. |
+| `$.ui.resolve(e)` | Gets the elements (`Box`, `Text`, `Button`) to draw the three lines and the detail pane with. | Local drawing only. |
 | `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
 
-The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. It changes two things: the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its two lines above Claude Code's own hint, and, only when you run `/cache-ttl` (`command.run`), the prompt cache TTL of the session.
+The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. It changes two things: the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its three lines above Claude Code's own hint, and, only when you run `/cache-ttl` (`command.run`), the prompt cache TTL of the session. It also draws its own detail pane (`ui.render` on `Pane`), only when you click a legend entry.
 
 ## Migrating from v1
 

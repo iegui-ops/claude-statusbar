@@ -1,4 +1,4 @@
-import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit, Timer } from 'claude-code'
+import type { EngineInterface, Register, SessionContextBreakdown, SessionContextUsage, SessionRateLimit, Timer } from 'claude-code'
 
 type Limit = Pick<SessionRateLimit, 'kind' | 'percentUsed' | 'resetsAt'>
 
@@ -15,6 +15,9 @@ const s = {
   rows: [] as { name: string; tokens: number; color: string }[],
   compactAt: undefined as number | undefined,
   max: 0,
+  breakdown: null as SessionContextBreakdown | null,
+  // What the detail pane shows: the category clicked in the legend and what fills it.
+  detail: null as { title: string; lines: string[] } | null,
 }
 
 const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', one_day: '1d', seven_day: '7d' }
@@ -50,12 +53,71 @@ async function refreshBreakdown($: EngineInterface) {
   const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
   if (!b) return
   s.rows = b.categories.filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens, color: c.color }))
+  s.breakdown = b
   s.max = b.rawMaxTokens
   s.compactAt = b.isAutoCompactEnabled ? b.autoCompactThreshold : undefined
   $.ui.invalidate('ui.render')
 }
 
-export const mss =(s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+const DETAIL = 'context-detail'
+const byTokens = <T extends { tokens: number }>(xs: readonly T[]) => [...xs].sort((a, b) => b.tokens - a.tokens)
+
+// What fills a legend category, from the breakdown alone; null when it needs the engine.
+export const breakdownLines = (name: string, b: SessionContextBreakdown): string[] | null => {
+  switch (name.toLowerCase()) {
+    case 'skills': {
+      const sk = b.skills
+      if (!sk) return []
+      return [
+        `${sk.includedSkills} of ${sk.totalSkills} skills listed, ${fmt(sk.tokens)} tokens`,
+        ...byTokens(sk.skillFrontmatter).map(k => `${fmt(k.tokens).padStart(6)}  ${k.name}  (${k.pluginName ?? k.source})`),
+      ]
+    }
+    case 'mcp tools':
+      return byTokens(b.mcpTools.filter(t => t.isLoaded)).map(t => `${fmt(t.tokens).padStart(6)}  ${t.name}  (${t.serverName})`)
+    case 'custom agents':
+      return byTokens(b.agents).map(a => `${fmt(a.tokens).padStart(6)}  ${a.agentType}  (${a.source})`)
+    case 'memory files':
+      return byTokens(b.memoryFiles).map(f => `${fmt(f.tokens).padStart(6)}  ${f.path}  (${f.type})`)
+    default:
+      return null
+  }
+}
+
+const firstLine = (t: string, n = 100) => {
+  const l = t.trim().split('\n')[0] ?? ''
+  return l.length > n ? `${l.slice(0, n - 1)}…` : l
+}
+
+// Fills the detail pane for a legend category and opens it. The rest reads the engine:
+// the system prompt as it composes it, the built-in tools, the conversation's messages.
+async function showDetail($: EngineInterface, name: string) {
+  const b = s.breakdown
+  let lines = b ? breakdownLines(name, b) : []
+  if (!lines) {
+    const key = name.toLowerCase()
+    if (key === 'system prompt' || key === 'mcp server instructions') {
+      const { sections } = await $.prompt.compose()
+      const mcp = (id: string) => /mcp/i.test(id)
+      lines = sections
+        .filter(x => mcp(x.id) === (key !== 'system prompt'))
+        .flatMap(x => [`── ${x.id} ──`, ...x.text.split('\n'), ''])
+    } else if (key === 'system tools') {
+      lines = (await $.tool.list()).filter(t => !t.mcp).map(t => `${t.name}  ${firstLine(t.description)}`)
+    } else if (key === 'messages') {
+      const msgs = await $.session.messages()
+      lines = [
+        `${msgs.length} messages`,
+        ...msgs.map(m => `${m.role === 'user' ? '›' : '‹'} ${firstLine(m.text) || m.toolUses.map(u => u.tool).join(', ')}`),
+      ]
+    } else lines = []
+  }
+  s.detail = { title: name.toLowerCase(), lines: lines.length ? lines : ['Nothing to list.'] }
+  $.ui.invalidate('ui.render')
+  await $.ui.open({ id: DETAIL, title: s.detail.title, focus: true, closeOnEscape: true })
+}
+
+export const mss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 const pad = (n: number) => String(n).padStart(2, '0')
 export const resetLabel = (rl: Limit) => {
@@ -238,8 +300,18 @@ export const register: Register = (on, options) => {
 
   // No hook reaches the engine's statusLine slot; the hint line under the prompt is the nearest.
   // The engine's own hint (mode pills, shortcuts) stays, drawn under our two lines.
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+  // What fills a category, opened by clicking it in the legend; Esc closes it.
+  on('ui.render', { component: 'Pane', requestId: DETAIL }, ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        {(s.detail?.lines ?? []).map((l, i) => <Text key={String(i)}>{l || ' '}</Text>)}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
     const hint = await next(e)
     const { dir, branch, cache: c, context, limits, ttlLeft, rows, compactAt, max } = s
     const pct = context?.percent ?? 0
@@ -269,16 +341,14 @@ export const register: Register = (on, options) => {
           {ttlLeft !== null ? <Text dimColor>{`  TTL ${mss(ttlLeft)}`}</Text> : null}
         </Text>
         {rows.length ? (
-          <Text>
-            {rows.map((r, i) => (
-              <Text>
-                {i ? '  ' : ''}
+          <Box flexWrap="wrap">
+            {rows.map(r => (
+              <Box key={r.name} marginRight={2}>
                 <Text color={r.color}>■ </Text>
-                <Text dimColor>{`${r.name.toLowerCase()} `}</Text>
-                {fmt(r.tokens)}
-              </Text>
+                <Button plain label={`${r.name.toLowerCase()} ${fmt(r.tokens)}`} onPress={() => void showDetail($, r.name)} />
+              </Box>
             ))}
-          </Text>
+          </Box>
         ) : null}
         {hint}
       </Box>

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, branchFromHead, ctxBar, cacheTtl, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
+import { bar, branchFromHead, breakdownLines, ctxBar, cacheTtl, color, fmt, gitDirFromFile, mss, parentDir, resetLabel, ttlMinutes } from '../hooks/register'
 
 test('cacheTtl resolves the TTL in Claude Code order', () => {
   expect(cacheTtl('1', '1h', '1h', 60)).toEqual({ min: 5, from: 'FORCE_PROMPT_CACHING_5M' })
@@ -33,7 +33,23 @@ test('ttlMinutes falls back to the 1-hour cache on bad settings', () => {
   expect(ttlMinutes('abc')).toBe(60)
 })
 
-const PROPS = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
+test('a legend category lists what fills it, biggest first', () => {
+  const b = {
+    skills: { totalSkills: 3, includedSkills: 2, tokens: 300, skillFrontmatter: [
+      { name: 'small', source: 'userSettings', tokens: 100 },
+      { name: 'big', source: 'plugin', pluginName: 'p', tokens: 200 },
+    ] },
+    mcpTools: [{ name: 'mcp__x__a', serverName: 'x', tokens: 50, isLoaded: true }, { name: 'mcp__x__b', serverName: 'x', tokens: 9, isLoaded: false }],
+    agents: [],
+    memoryFiles: [{ path: '/a/CLAUDE.md', type: 'Project', tokens: 1200 }],
+  } as unknown as Parameters<typeof breakdownLines>[1]
+  expect(breakdownLines('Skills', b)).toEqual(['2 of 3 skills listed, 300 tokens', '   200  big  (p)', '   100  small  (userSettings)'])
+  expect(breakdownLines('MCP tools', b)).toEqual(['    50  mcp__x__a  (x)'])
+  expect(breakdownLines('Memory files', b)).toEqual(['  1.2k  /a/CLAUDE.md  (Project)'])
+  expect(breakdownLines('System prompt', b)).toBeNull()
+})
+
+const PROPS ={ isDraft: false, isWorking: false, hint: '? for shortcuts' }
 
 // The surface validates the tree on mount: a refused tree rejects drawn().
 test('the bar draws above the engine hint on every surface', async ($, on) => {
