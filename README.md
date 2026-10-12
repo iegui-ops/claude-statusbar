@@ -123,9 +123,27 @@ Everything is in `hooks/register.tsx`:
 
 ## Data and programs
 
-**What the mod sends, and where: nothing.** It makes no network requests (no `$.http`), never calls a model (no `$.model`), writes no files and keeps nothing across sessions. Everything it shows is read from the running Claude Code session and kept in memory until the session ends.
+**What the mod sends, and where: nothing.** It makes no network requests (no `$.http`), never calls a model (no `$.model`), writes no files and keeps nothing across sessions. Everything it shows is read from the running Claude Code session and kept in memory until the session ends. No session data (prompts, messages, usage figures, paths, the branch) leaves Claude Code's process.
+
+**The one way out: an environment variable, `CLAUDE_CODE_PROMPT_CACHE_TTL`.** `$.env.set` is not a channel the mod reads back or that reaches any server of its own. It changes a variable in Claude Code's own process, and the value is only ever `5m`, `1h` or unset. Two things read it:
+
+- **Claude Code**, on its next request to the Anthropic API, uses it to choose the prompt cache lifetime it asks for (5 minutes or 1 hour). That request goes where Claude Code always sends it, with the same content; only the cache lifetime differs.
+- **Programs Claude Code starts afterwards** (Bash commands, a `claude` launched from them) inherit it, as they inherit the rest of Claude Code's environment.
 
 **Programs it runs: none.** It starts no process (no `$.process`).
+
+### Environment variables and configuration it sets
+
+| What | Value | When | Undone |
+|------|-------|------|--------|
+| `CLAUDE_CODE_PROMPT_CACHE_TTL` (environment of Claude Code's process) | `5m` or `1h`, or unset | Only when you run `/cache-ttl 5m`, `/cache-ttl 1h` or `/cache-ttl auto` | When the session ends; `/cache-ttl auto` unsets it at once |
+| `CLAUDE_CODE_PROMPT_CACHE_TTL` | `5m`, then the value it had before (or unset) | Only with the `expiryTo5m` option on (off by default): when the countdown reaches zero, and back once the next main turn ends | Put back automatically after that turn; when the session ends |
+
+It changes nothing else: no setting in any `settings.json`, no `/config` row, no permission mode, no Remote Control, no file. The two `userConfig` options (`ttlMinutes`, `expiryTo5m`) are written by Claude Code when you change them in `/config`, not by the mod.
+
+### Hooks that answer an event instead of passing it on
+
+Only one: `command.run` for **its own** command, `/cache-ttl` (matcher `{ command: 'cache-ttl' }`). A mod's slash command is served this way: `$.command.register` declares it and a `command.run` hook on that name returns its output line. No other command reaches the hook. Every other hook (`session.start`, `session.measure`, `turn.step`, `turn.complete`) passes the event on unchanged with `next(e)`. It has no permission hook (`tool.check`, `tool.call`) and no hook on `config.set`, `agent.register`, `agent.spawn` or `fs.write`.
 
 **Files it reads: only git's HEAD.** To show the current branch it looks for a `.git` entry in the session's folder and each folder above it, and reads the first one's `HEAD` file (`ref: refs/heads/main`). In a git worktree `.git` is a small file naming the real git folder, so it reads that file and then the `HEAD` it points to. This happens once when the session starts and once after each turn. Outside a git repository nothing is read and the branch is left out. It never writes a file.
 
