@@ -132,6 +132,8 @@ Everything is in `hooks/register.tsx`:
 
 **Programs it runs: none.** It starts no process (no `$.process`).
 
+**Files it reads: only git's HEAD.** To show the current branch it looks for a `.git` entry in the session's folder and each folder above it, and reads the first one's `HEAD` file (`ref: refs/heads/main`). In a git worktree `.git` is a small file naming the real git folder, so it reads that file and then the `HEAD` it points to. This happens once when the session starts and once after each turn. Outside a git repository nothing is read and the branch is left out. It never writes a file.
+
 ### Environment variables and configuration it sets
 
 | What | Value | When | Undone |
@@ -144,8 +146,6 @@ It changes nothing else: no setting in any `settings.json`, no `/config` row, no
 ### Hooks that answer an event instead of passing it on
 
 Only one: `command.run` for **its own** command, `/cache-ttl` (matcher `{ command: 'cache-ttl' }`). A mod's slash command is served this way: `$.command.register` declares it and a `command.run` hook on that name returns its output line. No other command reaches the hook. Every other hook (`session.start`, `session.measure`, `turn.step`, `turn.complete`) passes the event on unchanged with `next(e)`. It has no permission hook (`tool.check`, `tool.call`) and no hook on `config.set`, `agent.register`, `agent.spawn` or `fs.write`.
-
-**Files it reads: only git's HEAD.** To show the current branch it looks for a `.git` entry in the session's folder and each folder above it, and reads the first one's `HEAD` file (`ref: refs/heads/main`). In a git worktree `.git` is a small file naming the real git folder, so it reads that file and then the `HEAD` it points to. This happens once when the session starts and once after each turn. Outside a git repository nothing is read and the branch is left out. It never writes a file.
 
 ### Every mods API call it makes
 
