@@ -2,6 +2,8 @@
 
 Your Claude Code session at a glance. A Claude Code **mod** (a plugin of function hooks) that draws three lines under the prompt: context usage broken down by category (as `/context` shows it), model, git branch, rate limits, prompt cache stats and a live prompt cache TTL countdown. Click a category to see what fills it. It also adds `/cache-ttl`, to switch the prompt cache between 5 minutes and 1 hour mid-session, and an option to rewrite an expired cache at the cheaper 5-minute price for one turn.
 
+> **Don't see the bar?** Run `claude update`: it needs Claude Code **v2.1.287 or later**. On older versions the plugin installs and loads without errors but draws nothing.
+
 https://github.com/user-attachments/assets/938b09bf-3839-4848-b7fb-b58726b43734
 
 **Line 1:** directory · git branch · model · each rate-limit window Claude Code reports (`5h`, `1d`, `7d`) with its reset time
