@@ -24,7 +24,7 @@ Click a category in the legend and a pane opens with what is in it; Esc closes i
 | `memory files` | each CLAUDE.md, rules or auto-memory file with its path, type and tokens |
 | `system prompt` | the system prompt in full, section by section (the pane scrolls) |
 | `system tools` | each built-in tool with the first line of its description |
-| `mcp server instructions` | the system prompt sections about MCP servers |
+| `mcp server instructions` | each MCP server's instructions, as the model reads them (seen from the first message after the session starts or the mod loads) |
 | `messages` | how many messages, then one line per message |
 
 The token figures are `/context`'s summary estimates. Opening a pane never calls the model and costs no tokens.
@@ -110,7 +110,7 @@ After the mod reloads (an update, or a change to its config) the countdown is em
 Everything is in `hooks/register.tsx`:
 
 - **Context, rate limits:** read from the session (`$.session.usage()` at start, then the `session.measure` event whenever a figure moves). The per-category breakdown comes from `$.session.usage({ breakdown: 'summary' })`, a local estimate, at start and whenever the context changes.
-- **Detail pane:** each legend entry is a button. A click reads what fills that category (from the breakdown, or `$.prompt.compose()`, `$.tool.list()`, `$.session.messages()`) and opens a pane (`$.ui.open`) drawn by a `ui.render` hook on `Pane`.
+- **Detail pane:** each legend entry is a button. A click reads what fills that category (from the breakdown, or `$.prompt.compose()`, `$.tool.list()`, `$.session.messages()`; the MCP server instructions travel as an attachment, not a system prompt section, so a `prompt.attachment` hook on `mcp_instructions_delta` keeps their text as it passes) and opens a pane (`$.ui.open`) drawn by a `ui.render` hook on `Pane`.
 - **Cache stats and TTL:** every main-thread model response (`turn.step`) reports its cache read and cache write tokens. Any response that read or wrote the cache restarts the countdown, since using a cache entry refreshes its lifetime. Subagents keep their own cache, so they are ignored.
 - **Countdown:** a 1-second timer (`$.clock.every`) inside the mod, cancelled once the cache expires.
 - **Branch:** read from `.git/HEAD`, found by walking up from the session's folder as git does (worktrees and detached HEADs included), at session start and after each turn. No `git` process is started.
@@ -145,7 +145,7 @@ It changes nothing else: no setting in any `settings.json`, no `/config` row, no
 
 ### Hooks that answer an event instead of passing it on
 
-Only one: `command.run` for **its own** command, `/cache-ttl` (matcher `{ command: 'cache-ttl' }`). A mod's slash command is served this way: `$.command.register` declares it and a `command.run` hook on that name returns its output line. No other command reaches the hook. Every other hook (`session.start`, `session.measure`, `turn.step`, `turn.complete`) passes the event on unchanged with `next(e)`. It has no permission hook (`tool.check`, `tool.call`) and no hook on `config.set`, `agent.register`, `agent.spawn` or `fs.write`.
+Only one: `command.run` for **its own** command, `/cache-ttl` (matcher `{ command: 'cache-ttl' }`). A mod's slash command is served this way: `$.command.register` declares it and a `command.run` hook on that name returns its output line. No other command reaches the hook. Every other hook (`session.start`, `session.measure`, `turn.step`, `turn.complete`, `prompt.attachment`) passes the event on unchanged with `next(e)`. The `prompt.attachment` hook matches only `mcp_instructions_delta`, keeps the text the model reads (main thread only) for the `mcp server instructions` pane, and returns it as it came. Where an organization manages Claude Code, it does not run in a plugin you install yourself, and that pane stays empty. It has no permission hook (`tool.check`, `tool.call`) and no hook on `config.set`, `agent.register`, `agent.spawn` or `fs.write`.
 
 ### Every mods API call it makes
 
@@ -154,7 +154,7 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | Call | What it does here | Data in / out |
 |------|-------------------|---------------|
 | `$.session.usage()` | Reads the context window fill and rate-limit windows at session start, and the per-category breakdown (`summary`, a local estimate) at start and whenever the context changes. | Reads figures Claude Code already has; sends nothing. |
-| `$.prompt.compose()` | Only when you click `system prompt` or `mcp server instructions` in the legend: composes the system prompt to list its sections in the detail pane. Nothing is sent. | Reads what Claude Code would send; displayed only. |
+| `$.prompt.compose()` | Only when you click `system prompt` in the legend: composes the system prompt to list its sections in the detail pane. Nothing is sent. | Reads what Claude Code would send; displayed only. |
 | `$.tool.list()` | Only when you click `system tools`: lists the built-in tools and their descriptions. | Reads Claude Code's tool list; displayed only. |
 | `$.session.messages()` | Only when you click `messages`: lists the conversation's messages, one line each. | Reads the transcript Claude Code already has; displayed only. |
 | `$.ui.open(pane)` | Opens the detail pane for the category you clicked (Esc closes it). | Local UI only. |
@@ -169,8 +169,9 @@ This is the full list (`claude plugin validate .claude-plugin/plugin.json` print
 | `$.command.register(spec)` | Adds the `/cache-ttl` slash command. | Local only. |
 | `$.ui.resolve(e)` | Gets the elements (`Box`, `Text`, `Button`) to draw the three lines and the detail pane with. | Local drawing only. |
 | `$.ui.invalidate('ui.render')` | Asks Claude Code to redraw the bar after a figure changes. | Local drawing only. |
+| `$.ui.invalidate('prompt.attachment')` | At session start: has Claude Code pass its attachments through the hooks again on the next request, so a reloaded mod sees the MCP server instructions. The text the model reads does not change. | Local only; sends nothing. |
 
-The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. It changes two things: the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its three lines above Claude Code's own hint, and, only when you run `/cache-ttl` (`command.run`), the prompt cache TTL of the session. It also draws its own detail pane (`ui.render` on `Pane`), only when you click a legend entry.
+The events it listens to (`session.start`, `session.measure`, `turn.step`, `turn.complete`, `prompt.attachment`) are observed and passed on unchanged: it never alters prompts, tool calls, model requests or responses. It changes two things: the drawing of the hint line under the prompt (`ui.render` on `PromptHint`), where it adds its three lines above Claude Code's own hint, and, only when you run `/cache-ttl` (`command.run`), the prompt cache TTL of the session. It also draws its own detail pane (`ui.render` on `Pane`), only when you click a legend entry.
 
 ## Migrating from v1
 

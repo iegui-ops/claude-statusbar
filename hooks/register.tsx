@@ -18,6 +18,9 @@ const s = {
   breakdown: null as SessionContextBreakdown | null,
   // What the detail pane shows: the category clicked in the legend and what fills it.
   detail: null as { title: string; lines: string[] } | null,
+  // The MCP servers' instructions, as the model reads them: they travel as an attachment
+  // (`mcp_instructions_delta`), not as a system prompt section. A Set: re-asks repeat a text.
+  mcpInstructions: new Set<string>(),
 }
 
 const LIMIT_LABEL: Record<string, string> = { five_hour: '5h', one_day: '1d', seven_day: '7d' }
@@ -96,12 +99,12 @@ async function showDetail($: EngineInterface, name: string) {
   let lines = b ? breakdownLines(name, b) : []
   if (!lines) {
     const key = name.toLowerCase()
-    if (key === 'system prompt' || key === 'mcp server instructions') {
+    if (key === 'system prompt') {
       const { sections } = await $.prompt.compose()
-      const mcp = (id: string) => /mcp/i.test(id)
-      lines = sections
-        .filter(x => mcp(x.id) === (key !== 'system prompt'))
-        .flatMap(x => [`── ${x.id} ──`, ...x.text.split('\n'), ''])
+      lines = sections.flatMap(x => [`── ${x.id} ──`, ...x.text.split('\n'), ''])
+    } else if (key === 'mcp server instructions') {
+      lines = [...s.mcpInstructions].flatMap(t => [...t.split('\n'), ''])
+      if (!lines.length) lines = ['Not seen yet: they show up after your next message.']
     } else if (key === 'system tools') {
       lines = (await $.tool.list()).filter(t => !t.mcp).map(t => `${t.name}  ${firstLine(t.description)}`)
     } else if (key === 'messages') {
@@ -252,12 +255,21 @@ export const register: Register = (on, options) => {
     s.limits = rateLimits
     s.dir = e.cwd.replace(/\/+$/, '').split('/').pop() || e.cwd
     void refreshBreakdown($)
+    // Asks the attachments again on the next request, so a reloaded mod sees the MCP instructions.
+    $.ui.invalidate('prompt.attachment')
     await refreshBranch($)
     await $.command.register({ name: 'cache-ttl', description: 'Set the prompt cache TTL for this session', argumentHint: '5m|1h|auto' })
     return next(e)
   })
 
   on('command.run', { command: 'cache-ttl' }, ($, e) => setTtl($, e.args, fallback))
+
+  // Observed and passed on unchanged: keeps the text the main thread's model reads.
+  on('prompt.attachment', { type: 'mcp_instructions_delta' }, async ($, e, next) => {
+    const r = await next(e)
+    if (!e.agentId && r.text) s.mcpInstructions.add(r.text)
+    return r
+  })
 
   on('session.measure', ($, e, next) => {
     s.context = e.context
