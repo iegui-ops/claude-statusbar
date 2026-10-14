@@ -4,7 +4,7 @@ Your Claude Code session at a glance. A Claude Code **mod** (a plugin of functio
 
 > **Don't see the bar?** Run `claude update`: it needs Claude Code **v2.1.287 or later**. On older versions the plugin installs and loads without errors but draws nothing.
 
-https://github.com/user-attachments/assets/938b09bf-3839-4848-b7fb-b58726b43734
+https://github.com/user-attachments/assets/7b188ec6-1143-4906-a3ee-74ea8d95eeaf
 
 **Line 1:** directory · git branch · model · each rate-limit window Claude Code reports (`5h`, `1d`, `7d`) with its reset time
 **Line 2:** context bar coloured by category, with a `▏` where auto-compaction runs · usage % · tokens used/window · auto-compact threshold (`⇥167k`) · cache read · cache written · prompt cache TTL countdown
